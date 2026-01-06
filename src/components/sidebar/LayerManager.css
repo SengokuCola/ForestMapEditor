@@ -1,0 +1,9 @@
+.layer-manager {
+  margin-bottom: 15px;
+}
+
+.layer-manager .btn {
+  padding: 6px 8px;
+  font-size: 11px;
+  margin: 4px 0;
+}

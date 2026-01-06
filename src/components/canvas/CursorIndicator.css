@@ -1,0 +1,18 @@
+.cursor-indicator {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1000;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.cursor-indicator-pen {
+  border: 2px solid #e74c3c;
+  background: rgba(231, 76, 60, 0.1);
+}
+
+.cursor-indicator-eraser {
+  border: 2px solid #95a5a6;
+  background: rgba(149, 165, 166, 0.1);
+  border-style: dashed;
+}

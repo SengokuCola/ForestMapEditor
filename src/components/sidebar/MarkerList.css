@@ -1,0 +1,107 @@
+.marker-list-section {
+  margin-bottom: 15px;
+}
+
+.marker-list-section h3 {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ecf0f1;
+}
+
+.marker-list {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+.empty-markers {
+  text-align: center;
+  padding: 15px;
+  color: #95a5a6;
+  font-size: 12px;
+}
+
+.empty-markers .hint {
+  font-size: 10px;
+  margin-top: 5px;
+}
+
+.marker-item {
+  background: #34495e;
+  padding: 6px 8px;
+  margin: 3px 0;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.3s;
+}
+
+.marker-item:hover {
+  background: #3d566e;
+}
+
+.marker-item.active {
+  background: #3498db;
+}
+
+.marker-color-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.marker-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.marker-text {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marker-text-input {
+  flex: 1;
+  font-size: 11px;
+  padding: 2px 6px;
+  border: 1px solid #3498db;
+  border-radius: 3px;
+  background: white;
+  color: #2c3e50;
+  outline: none;
+  min-width: 0;
+}
+
+.marker-text-input:focus {
+  border-color: #2980b9;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.3);
+}
+
+.marker-controls {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.marker-btn {
+  padding: 3px 5px;
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 3px;
+  color: white;
+  cursor: pointer;
+  transition: background 0.3s;
+  min-width: 20px;
+}
+
+.marker-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
