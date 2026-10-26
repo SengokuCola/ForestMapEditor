@@ -19,6 +19,11 @@ export const useCanvas = (canvasRef, containerRef, mapImage, layers, currentLaye
   const movingCoordinateIdRef = useRef(null) // 正在移动的坐标点 ID
   const lastClickTimeRef = useRef(0) // 用于检测双击
   const lastClickedCoordinateIdRef = useRef(null) // 上次点击的坐标点 ID
+  const drawingPointsBufferRef = useRef([]) // 绘制点缓冲：用于避免初始绘制时的卡顿
+  const pendingLayerUpdateRef = useRef(null) // 待处理的图层更新
+  const offsetXRef = useRef(offsetX) // 使用 ref 存储偏移量，避免 setState 导致的重渲染
+  const offsetYRef = useRef(offsetY) // 使用 ref 存储偏移量，避免 setState 导致的重渲染
+  const isDraggingRef = useRef(false) // 是否正在拖拽（平移）
 
   // 图层缓存：存储每个图层的离屏画布
   const layerCacheRef = useRef(new Map()) // Map<layerId, { canvas, version }>
@@ -30,6 +35,14 @@ export const useCanvas = (canvasRef, containerRef, mapImage, layers, currentLaye
   // 使用 requestAnimationFrame 优化绘制
   const rafIdRef = useRef(null)
   const pendingDrawRef = useRef(false)
+  // 批量处理图层更新，避免频繁触发状态更新
+  const layerUpdateRafRef = useRef(null)
+
+  // 同步 offsetX/offsetY 到 ref
+  useEffect(() => {
+    offsetXRef.current = offsetX
+    offsetYRef.current = offsetY
+  }, [offsetX, offsetY])
 
   const getCanvasCoordinates = useCallback((e) => {
     if (!canvasRef.current || !containerRef.current) return { x: 0, y: 0 }
@@ -357,17 +370,27 @@ export const useCanvas = (canvasRef, containerRef, mapImage, layers, currentLaye
       startPanPosRef.current = { x: e.clientX - offsetX, y: e.clientY - offsetY }
     } else if (currentTool === 'pen' || currentTool === 'eraser') {
       isDrawingRef.current = true
+
+      // 立即初始化绘制对象和缓冲区
       const newDrawing = {
         type: currentTool,
         color: currentTool === 'pen' ? currentLayer.color : null,
         size: currentTool === 'pen' ? toolOptions.pen.size : toolOptions.eraser.size,
         points: [{ x: coords.x, y: coords.y }]
       }
-      const updatedDrawings = [...(currentLayer.drawings || []), newDrawing]
-      updateLayer(currentLayerIndex, {
-        drawings: updatedDrawings
-      })
       currentDrawingRef.current = newDrawing
+
+      // 清空缓冲区并添加第一个点
+      drawingPointsBufferRef.current = [{ x: coords.x, y: coords.y }]
+
+      // 使用微任务延迟更新，避免阻塞主线程
+      // Promise.resolve().then() 会在当前事件循环完成后立即执行，比 RAF 更快
+      Promise.resolve().then(() => {
+        const updatedDrawings = [...(currentLayer.drawings || []), newDrawing]
+        updateLayer(currentLayerIndex, {
+          drawings: updatedDrawings
+        })
+      })
     }
 
     // 其他工具的右键处理
@@ -384,55 +407,92 @@ export const useCanvas = (canvasRef, containerRef, mapImage, layers, currentLaye
 
     // 右键拖拽地图
     if (isRightClickPanningRef.current) {
-      // 平移操作：直接更新 transform，不重绘
+      isDraggingRef.current = true
+      // 平移操作：直接更新 ref 和 transform，不触发 setState
       const newOffsetX = e.clientX - startPanPosRef.current.x
       const newOffsetY = e.clientY - startPanPosRef.current.y
-      setOffsetX(newOffsetX)
-      setOffsetY(newOffsetY)
-      // 直接操作 DOM，避免触发重绘
+      offsetXRef.current = newOffsetX
+      offsetYRef.current = newOffsetY
+
+      // 直接操作所有需要 transform 的元素
       if (canvasRef.current && containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect()
         const centerX = rect.width / 2
         const centerY = rect.height / 2
         const translateX = centerX + newOffsetX - (canvasRef.current.width * scale) / 2
         const translateY = centerY + newOffsetY - (canvasRef.current.height * scale) / 2
-        canvasRef.current.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`
+        const transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`
+
+        // 更新主画布
+        canvasRef.current.style.transform = transform
+
+        // 更新所有覆盖层（坐标点、标记点）
+        const overlays = containerRef.current.querySelectorAll('canvas[style*="transform"]')
+        overlays.forEach(overlay => {
+          if (overlay !== canvasRef.current) {
+            overlay.style.transform = transform
+          }
+        })
       }
       return
     }
 
     const coords = getCanvasCoordinates(e)
-    
+
     if (currentTool === 'pan' && isPanningRef.current) {
-      // 平移操作：直接更新 transform，不重绘
+      isDraggingRef.current = true
+      // 平移操作：直接更新 ref 和 transform，不触发 setState
       const newOffsetX = e.clientX - startPanPosRef.current.x
       const newOffsetY = e.clientY - startPanPosRef.current.y
-      setOffsetX(newOffsetX)
-      setOffsetY(newOffsetY)
-      // 直接操作 DOM，避免触发重绘
+      offsetXRef.current = newOffsetX
+      offsetYRef.current = newOffsetY
+
+      // 直接操作所有需要 transform 的元素
       if (canvasRef.current && containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect()
         const centerX = rect.width / 2
         const centerY = rect.height / 2
         const translateX = centerX + newOffsetX - (canvasRef.current.width * scale) / 2
         const translateY = centerY + newOffsetY - (canvasRef.current.height * scale) / 2
-        canvasRef.current.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`
+        const transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`
+
+        // 更新主画布
+        canvasRef.current.style.transform = transform
+
+        // 更新所有覆盖层（坐标点、标记点）
+        const overlays = containerRef.current.querySelectorAll('canvas[style*="transform"]')
+        overlays.forEach(overlay => {
+          if (overlay !== canvasRef.current) {
+            overlay.style.transform = transform
+          }
+        })
       }
     } else if (isDrawingRef.current && (currentTool === 'pen' || currentTool === 'eraser')) {
       if (currentDrawingRef.current && currentLayer) {
-        // 更新当前绘制的点
+        // 立即添加点到本地缓冲区和引用对象
         currentDrawingRef.current.points.push({ x: coords.x, y: coords.y })
+        drawingPointsBufferRef.current.push({ x: coords.x, y: coords.y })
 
-        // 更新图层中的绘制路径（创建新数组避免直接修改）
-        const drawings = [...(currentLayer.drawings || [])]
-        if (drawings.length > 0) {
-          // 创建新的绘制对象，包含更新的点
-          drawings[drawings.length - 1] = {
-            ...currentDrawingRef.current,
-            points: [...currentDrawingRef.current.points]
-          }
-          updateLayer(currentLayerIndex, { drawings })
+        // 使用 RAF 批量更新图层状态，避免阻塞
+        if (layerUpdateRafRef.current === null) {
+          layerUpdateRafRef.current = requestAnimationFrame(() => {
+            layerUpdateRafRef.current = null
+
+            // 检查是否还在绘制状态，避免竞态条件
+            if (currentDrawingRef.current && isDrawingRef.current) {
+              // 批量更新所有缓冲的点
+              const drawings = [...(currentLayer.drawings || [])]
+              if (drawings.length > 0) {
+                drawings[drawings.length - 1] = {
+                  ...currentDrawingRef.current,
+                  points: [...currentDrawingRef.current.points]
+                }
+                updateLayer(currentLayerIndex, { drawings })
+              }
+            }
+          })
         }
+
         draw()
       }
     }
@@ -449,17 +509,56 @@ export const useCanvas = (canvasRef, containerRef, mapImage, layers, currentLaye
 
     isDrawingRef.current = false
     isPanningRef.current = false
-    currentDrawingRef.current = null
+
+    // 如果刚才在拖动，现在同步偏移量到状态
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false
+      setOffsetX(offsetXRef.current)
+      setOffsetY(offsetYRef.current)
+    }
 
     // 绘制结束后保存历史记录并清除缓存
     if (currentLayer && (currentTool === 'pen' || currentTool === 'eraser')) {
-      // 保存当前状态到历史记录
-      pushHistoryImmediate(layers)
-      // 清除缓存
-      layerCacheRef.current.delete(currentLayer.id)
-      currentLayerVersionRef.current.delete(currentLayer.id)
+      // 保存当前绘制对象的引用，避免在 setTimeout 中被清空
+      const finalDrawing = currentDrawingRef.current
+
+      // 等待所有待处理的 RAF 完成，再保存最终状态
+      // 使用 setTimeout(0) 确保在所有微任务和 RAF 完成后执行
+      setTimeout(() => {
+        // 确保最后一次更新被保存
+        if (finalDrawing) {
+          const drawings = [...(currentLayer.drawings || [])]
+          if (drawings.length > 0) {
+            drawings[drawings.length - 1] = {
+              ...finalDrawing,
+              points: [...finalDrawing.points]
+            }
+            updateLayer(currentLayerIndex, { drawings })
+          }
+        }
+
+        // 保存当前状态到历史记录
+        pushHistoryImmediate(layers)
+
+        // 清除缓存
+        layerCacheRef.current.delete(currentLayer.id)
+        currentLayerVersionRef.current.delete(currentLayer.id)
+        beforeDrawCacheRef.current.delete(currentLayer.id)
+      }, 0)
     }
-  }, [currentTool, currentLayer, currentLayerIndex, toolOptions, getCanvasCoordinates, updateLayer, draw, layers, pushHistoryImmediate])
+
+    // 清空绘制对象和缓冲区（但在 setTimeout 回调中已保存引用）
+    currentDrawingRef.current = null
+    drawingPointsBufferRef.current = []
+
+    // 延迟清理 RAF，确保所有更新完成
+    setTimeout(() => {
+      if (layerUpdateRafRef.current !== null) {
+        cancelAnimationFrame(layerUpdateRafRef.current)
+        layerUpdateRafRef.current = null
+      }
+    }, 50)
+  }, [currentTool, currentLayer, currentLayerIndex, toolOptions, getCanvasCoordinates, updateLayer, draw, layers, pushHistoryImmediate, setOffsetX, setOffsetY])
 
   const handleWheel = useCallback((e) => {
     if (!mapImage || !canvasRef.current || !containerRef.current) return

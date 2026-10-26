@@ -125,8 +125,10 @@ const Canvas = forwardRef(({ mapImage, canvasSize, onImageLoad }, ref) => {
   // 绘制画布 - 当图层、地图、画布尺寸或背景颜色变化时重绘
   useEffect(() => {
     if (mapImage && canvasRef.current && canvasSize.width > 0 && canvasSize.height > 0) {
-      // 强制立即绘制，确保内容显示
-      draw(true)
+      // 使用 RAF 延迟绘制，避免阻塞主线程
+      requestAnimationFrame(() => {
+        draw(true)
+      })
     }
   }, [mapImage, layers, canvasSize, draw])
 
